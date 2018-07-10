@@ -1,4 +1,7 @@
 #!/bin/bash
+# 
+# New Version for Debian SID and Cosmic Ubuntu
+#
 #===============================================================================
 #
 #          FILE:  ispconfig.sh
