@@ -1,614 +1,235 @@
-#!/bin/bash
-#===============================================================================
+#!/usr/bin/env bash
+#---------------------------------------------------------------------
+# install.sh
 #
-#          FILE:  ispconfig.sh
-# 
-#         USAGE:  ./ispconfig.sh 
-# 
-#   DESCRIPTION:  
-# 
-#       OPTIONS:  ---
-#  REQUIREMENTS:  ---
-#          BUGS:  ---
-#         NOTES:  ---
-#        AUTHOR:  Walter Eyanu (), waltereyanu@gmail.com
-#       COMPANY:  Jolis Intercom
-#       VERSION:  1.0
-#       CREATED:  11/13/2012 08:18:58 PM EAT
-#      REVISION:  ---
-#===============================================================================
+# ISPConfig 3 system installer
+#
+# Script: install.sh
+# Version: 3.0.2
+# Author: Matteo Temporini <temporini.matteo@gmail.com>
+# Description: This script will install all the packages needed to install
+# ISPConfig 3 on your server.
+#
+#
+#---------------------------------------------------------------------
+
+#Those lines are for logging porpuses
+exec > >(tee -i /var/log/ispconfig_setup.log)
+exec 2>&1
+
+#---------------------------------------------------------------------
+# Global variables
+#---------------------------------------------------------------------
+CFG_HOSTNAME_FQDN=`hostname -f`;
+WT_BACKTITLE="ISPConfig 3 System Installer from Temporini Matteo"
+
+# Bash Colour
+red='\033[0;31m'
+green='\033[0;32m'
+NC='\033[0m' # No Color
 
 
-#-------------------------------------------------------------------------------
-#   User has to be root before running this script
-#-------------------------------------------------------------------------------
-if [[ $(id -u) -ne 0 ]]
-then
-	echo "Please run this script as root"
-	exit 2
+#Saving current directory
+PWD=$(pwd);
+
+#---------------------------------------------------------------------
+# Load needed functions
+#---------------------------------------------------------------------
+
+source $PWD/functions/check_linux.sh
+echo "Checking your system, please wait..."
+CheckLinux
+
+#---------------------------------------------------------------------
+# Load needed Modules
+#---------------------------------------------------------------------
+
+source $PWD/distros/$DISTRO/preinstallcheck.sh
+source $PWD/distros/$DISTRO/askquestions.sh
+
+source $PWD/distros/$DISTRO/install_basics.sh
+source $PWD/distros/$DISTRO/install_postfix.sh
+source $PWD/distros/$DISTRO/install_mysql.sh
+source $PWD/distros/$DISTRO/install_mta.sh
+source $PWD/distros/$DISTRO/install_antivirus.sh
+source $PWD/distros/$DISTRO/install_webserver.sh
+source $PWD/distros/$DISTRO/install_hhvm.sh
+source $PWD/distros/$DISTRO/install_ftp.sh
+source $PWD/distros/$DISTRO/install_quota.sh
+source $PWD/distros/$DISTRO/install_bind.sh
+source $PWD/distros/$DISTRO/install_webstats.sh
+source $PWD/distros/$DISTRO/install_jailkit.sh
+source $PWD/distros/$DISTRO/install_fail2ban.sh
+source $PWD/distros/$DISTRO/install_webmail.sh
+source $PWD/distros/$DISTRO/install_metronom.sh
+source $PWD/distros/$DISTRO/install_ispconfig.sh
+source $PWD/distros/$DISTRO/install_fix.sh
+
+source $PWD/distros/$DISTRO/install_basephp.sh #to remove in feature release
+#---------------------------------------------------------------------
+# Main program [ main() ]
+#    Run the installer
+#---------------------------------------------------------------------
+clear
+
+echo "Welcome to ISPConfig Setup Script v.3.0.2"
+echo "This software is developed by Temporini Matteo"
+echo "with the support of the community."
+echo "You can visit my website at the followings URLs"
+echo "http://www.servisys.it http://www.temporini.net"
+echo "and contact me with the following information"
+echo "contact email/hangout: temporini.matteo@gmail.com"
+echo "skype: matteo.temporini"
+echo "========================================="
+echo "ISPConfig 3 System installer"
+echo "========================================="
+echo
+echo "This script will do a nearly unattended installation of"
+echo "all software needed to run ISPConfig 3."
+echo "When this script starts running, it'll keep going all the way"
+echo "So before you continue, please make sure the following checklist is ok:"
+echo
+echo "- This is a clean standard clean installation for supported systems";
+echo "- Internet connection is working properly";
+echo
+echo
+if [ -n "$PRETTY_NAME" ]; then
+	echo -e "The detected Linux Distribution is: " $PRETTY_NAME
+else
+	echo -e "The detected Linux Distribution is: " $ID-$VERSION_ID
+fi
+echo
+if [ -n "$DISTRO" ]; then
+	read -p "Is this correct? (y/n)" -n 1 -r
+	echo    # (optional) move to a new line
+	if [[ ! $REPLY =~ ^[Yy]$ ]]
+		then
+		exit 1
+	fi
+else
+	echo -e "Sorry but your System is not supported by this script, if you want your system supported "
+	echo -e "open an issue on GitHub: https://github.com/servisys/ispconfig_setup"
+	exit 1
 fi
 
-#-------------------------------------------------------------------------------
-#   This script only runs on debian
-#-------------------------------------------------------------------------------
-
-DEBIAN=`cat /etc/debian_version`
-
-if [[ "$DEBIAN" = "" ]]
-then
-	echo "
-	#-------------------------------------------------------------------------------
-	#   Sorry This script was developed with debian in mind
-	#   		   Exitting now .........
-	#-------------------------------------------------------------------------------
-	"
-	sleep 2
-	exit
+if [ "$DISTRO" == "debian8" ]; then
+	     while [ "x$CFG_ISPCVERSION" == "x" ]
+          do
+                CFG_ISPCVERSION=$(whiptail --title "ISPConfig Version" --backtitle "$WT_BACKTITLE" --nocancel --radiolist "Select ISPConfig Version you want to install" 10 50 2 "Stable" "(default)" ON "Beta" "" OFF 3>&1 1>&2 2>&3)
+          done
+         while [ "x$CFG_MULTISERVER" == "x" ]
+          do
+                CFG_MULTISERVER=$(whiptail --title "MULTISERVER SETUP" --backtitle "$WT_BACKTITLE" --nocancel --radiolist "Would you like to install ISPConfig in a MultiServer Setup?" 10 50 2 "no" "(default)" ON "yes" "" OFF 3>&1 1>&2 2>&3)
+          done
+else
+	CFG_MULTISERVER=no
 fi
 
-
-#-------------------------------------------------------------------------------
-#   Functions
-#-------------------------------------------------------------------------------
-
-
-function basic_installations ()
-{
-
-	#-------------------------------------------------------------------------------
-	#   We first configure the HOSTNAME
-	#-------------------------------------------------------------------------------
-	read -p "Please enter your HOSTNAME (e.g. host): " HOSTNAME
-	check=`echo $HOSTNAME | grep -E "[^[:alnum:]\-]"`
-	if [[ "$check" != "" ]]
-	then
-		echo "$HOSTNAME is not a valid HOSTNAME"
-		exit 2
-	fi
-
-	read -p "Please enter the server domain name ($HOSTNAME.<domainname>): " FQDNNAME
-	check=`echo $FQDNNAME | grep -E "[^[:alnum:]\-\.-]"`
-	if [[ "$check" != "" ]]
-	then
-		echo "$FQDNNAME is not a valid domain name!"
-		exit 2
-	fi
-
-	# We now combine the HOSTNAME to the domain name
-	FQDNNAME="$HOSTNAME.$FQDNNAME"
-
-	read -p "Please confirm the server name $FQDNNAME as being correct (y/n)" answer
-	if [[ "$answer" != "j" && "$answer" != "y" ]]
-	then
-		echo "Please go back just to be sure"
-		exit 0
-	fi
-
-	# This is the server IP
-	SERVERIP=`ifconfig | grep -i 'inet addr:' | sed -r "s/.*inet\s+addr:\s*([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)\s+.*/\1.\2.\3.\4/" | grep -v 'addr:127.0.' | head -n 1`
-	OK="no"
-	while [[ "$OK" = "no" ]]
-       	do
-		read -p "Main-IP of the server (has to be set up in ifconfig already) [$SERVERIP]: " SETSERVERIP
-		if [[ "$SETSERVERIP" = "" ]]
-		then
-			SETSERVERIP="$SERVERIP" 
-		fi
-		CHECK=`ifconfig | grep ":$SETSERVERIP "`
-		if [[ "$CHECK" = "" ]]
-		then
-			echo "IP not found in ifconfig"
-		else
-			OK="yes"
-		fi
-	done
-	SERVERIP="$SETSERVERIP"
-
-	# now we set the HOSTNAME, we first back-up original files just in case
-	cp /etc/hosts /etc/hosts.bk
-	cp /etc/hostname /etc/hostname.bk
-	if [[ -e /etc/mailname ]]
-	then
-		cp /etc/mailname /etc/mailname.bk
-	fi
-
-	CHECK=`grep "$SERVERIP" /etc/hosts`
-	if [[" $CHECK" = "" ]]
-	then
-		echo "$SERVERIP $FQDNNAME $HOST_NAME" >> /etchosts
-	fi
-
-	echo "$HOSTNAME" > /etc/hostname
-	echo "$FQDNNAME" > /etc/mailname
-	hostname $HOSTNAME
-	/etc/init.d/hostname.sh start
-
-	apt-get -y update
-	apt-get -y install ntp ntpdate
-	apt-get -y install vim-nox screen
-}    # ----------  end of function basic_installations  ----------
-
-
-function web_server ()
-{
-    basic_installations
-    
-    ## create apt sources
-    cp /etc/apt/sources.list /etc/apt/sources.list.bk
-    echo "deb http://packages.dotdeb.org squeeze all
-    deb http://ftp.de.debian.org/debian/ squeeze-updates main
-    deb-src http://packages.dotdeb.org squeeze all" >> /etc/apt/sources.list
-    
-    wget http://www.dotdeb.org/dotdeb.gpg; cat dotdeb.gpg | apt-key add -
-    
-    read -p "We are going to install alot of packages, do you wish to continue (y/n)?" ANSWER
-    if [[ "$ANSWER" != "j" && "$ANSWER" != "y" ]]
-    then
-	echo "You've decided to exit! Exiting now...."
-	exit 0;
+if [ -f /etc/debian_version ]; then
+  PreInstallCheck
+  if [ "$CFG_MULTISERVER" == "no" ]; then
+	AskQuestions
+  else
+    source $PWD/distros/$DISTRO/askquestions_multiserver.sh
+	AskQuestionsMultiserver
+  fi
+  InstallBasics 
+  InstallSQLServer 
+  if [ "$CFG_SETUP_WEB" == "yes" ] || [ "$CFG_MULTISERVER" == "no" ]; then
+    InstallWebServer
+    InstallFTP 
+    if [ "$CFG_QUOTA" == "yes" ]; then
+    	InstallQuota 
     fi
-    
-    apt-get update
-    apt-get upgrade
-    apt-get -y install nginx php5-fpm php5-mysql php5-curl php5-gd php5-intl php-pear php5-imagick php5-imap php5-mcrypt php5-memcache php5-ming php5-ps php5-pspell php5-recode php5-snmp php5-sqlite php5-tidy php5-xmlrpc php5-xsl php-apc fcgiwrap pure-ftpd-common pure-ftpd-mysql quota quotatool vlogger webalizer awstats geoip-database build-essential autoconf automake1.9 libtool flex bison debhelper
-    /etc/init.d/nginx start
-    /etc/init.d/php5-fpm restart
-    apt-get install fail2ban
-    cp /etc/default/pure-ftpd-common /etc/default/pure-ftpd-common.bk
-    sed -i -r "s/VIRTUALCHROOT=.*VIRTUALCHROOT=true" /etc/default/pure-ftpd-common
-    
-    /etc/init.d/openbsd-inetd restart
-    
-    echo 1 > /etc/pure-ftpd/conf/TLS
-    mkdir -p /etc/ssl/private/
-    openssl req -x509 -nodes -days 7300 -newkey rsa:2048 -keyout /etc/ssl/private/pure-ftpd.pem -out /etc/ssl/private/pure-ftpd.pem
-    chmod 600 /etc/ssl/private/pure-ftpd.pem
-    /etc/init.d/pure-ftpd-mysql restart
-    
-    cd /tmp
-    wget http://olivier.sessink.nl/jailkit/jailkit-2.15.tar.gz
-    tar xvfz jailkit-2.15.tar.gz
-    cd jailkit-2.15
-    ./debian/rules binary
-    cd ..
-    dpkg -i jailkit_2.15-1_*.deb
-    rm -rf jailkit-2.15*
-    
-    echo "[pureftpd]
-    enabled  = true
-    port     = ftp
-    filter   = pureftpd
-    logpath  = /var/log/syslog
-    maxretry = 3" >> /etc/fail2ban/jail.local
-    
-    echo "[Definition]
-    failregex = .*pure-ftpd: \(.*@<HOST>\) \[WARNING\] Authentication failed for user.*
-    ignoreregex =" >> /etc/fail2ban/filter.d/pureftpd.conf
-    
-    /etc/init.d/fail2ban restart
-    
-    cd /tmp
-    svn export svn://svn.ispconfig.org/ispconfig3/trunk/
-    cd trunk/install
-    php -q install.php
-
-}    # ----------  end of function web_server  ----------
-
-
-function virtual_server ()
-{
-    #-------------------------------------------------------------------------------
-    #   We first configure the HOSTNAME
-    #-------------------------------------------------------------------------------
-    read -p "Please enter your HOSTNAME (e.g. host): " HOSTNAME
-    check=`echo $HOSTNAME | grep -E "[^[:alnum:]\-]"`
-    if [[ "$check" != "" ]]
-    then
-	echo "$HOSTNAME is not a valid HOSTNAME"
-    exit 2
+    if [ "$CFG_JKIT" == "yes" ]; then
+    	InstallJailkit 
     fi
-    
-    read -p "Please enter the server domain name ($HOSTNAME.<domainname>): " FQDNNAME
-    check=`echo $FQDNNAME | grep -E "[^[:alnum:]\-\.-]"`
-    if [[ "$check" != "" ]]
-    then
-	echo "$FQDNNAME is not a valid domain name!"
-	exit 2
+    if [ "$CFG_HHVM" == "yes" ]; then
+    	InstallHHVM
     fi
-    # We now combine the HOSTNAME to the domain name
-    FQDNNAME="$HOSTNAME.$FQDNNAME"
-    
-    read -p "Enter the First nameserver\'s IP address: " nameserver_one
-    if [[ $nameserver_one =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
-    then
-	nameserver_one=$nameserver_one
-    else
-	echo "Sorry that is not a valid IP address"
+    if [ "$CFG_METRONOM" == "yes" ]; then
+    	InstallMetronom 
     fi
-    read -p "Enter the Second nameserver's IP address: " nameserver_two
-    if [[ $nameserver_two =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
-    then
-	nameserver_two=$nameserver_two
-    else
-	echo "Sorry that is not a valid IP address"
-    fi
-    ## --here wait and first investigate how to do that
-    read -p "Enter Diskpace in Gigabites starting with minimumn allowed space: " min
-    read -p "Enter Diskpace in Gigabites the maximum allowed: " max
-    
-    ## -- VPS IP address
-    read -p "Enter IP address for you new VPS:" IP
-    if [[ $IP =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
-    then
-	IP=$IP
-    else
-	echo "Sorry that is not a valid IP address"
-    fi
-    
-    # now here we first find out if there are any VPSs running
-    
-    # This will list the number of VPSs+1(The HEADING) but then we subtract
-    current_vps=`vzlist -a | awk 'END{ print NR-1 }'`
-    
-    # here we increment the result by 1, we don't want to overwrite already installed
-    $current_vps=$[current_vps+1]
-    
-    vzctl create $current_vps --ostemplate $architecture
-    vzctl set $current_vps --onboot yes --save
-    vzctl set $current_vps --nameserver $nameserver_one --save
-    vzctl set $current_vps --nameserver $nameserver_two --save
-    vzctl set $current_vps --hostname $FQDNNAME --save
-    vzctl set $current_vps --diskspace ${min}G:${max}G --save
-    vzctl set $current_vps --ipadd $IP --save
-    vzctl set $current_vps --ram 10.5G --swap 5G --save
-    vzctl exec $current_vps passwd
-    vzctl start $current_vps
-}    # ----------  end of function virtual_server  ----------
-
-function master_server ()
-{
-	basic_installations
-	## create apt sources
-	cp /etc/apt/sources.list /etc/apt/sources.list.bk ;
-	echo "deb http://ftp.de.debian.org/debian $DISTRIB main contrib non-free" >> /etc/apt/sources.list ;
-	echo "deb-src http://ftp.de.debian.org/debian $DISTRIB main contrib non-free" >> /etc/apt/sources.list ;
-	echo "deb http://security.debian.org/ $DISTRIB/updates main contrib non-free" >> /etc/apt/sources.list ;
-	echo "deb-src http://security.debian.org/ $DISTRIB/updates main contrib non-free" >> /etc/apt/sources.list ;
-	echo "deb http://ftp.de.debian.org/debian/ squeeze-updates main" >> /etc/apt/sources.list ;
-
-	apt-get -q -y --force-yes install bc
-
-	# we shall do some update here
-	DONE="no"
-	STEP=1
-	# here $STEP is what we are going to go through am assuming 5 will increase it later if need be
-	while [[ "$DONE" = "no" && "$STEP" -lt "5" ]]
-	do
-		STEP=`echo "$STEP + 1" | bc`
-		echo "STEP: $STEP"
-		if [[ "$CHECK" != "" ]]
-		then
-			PUBKEY=`echo "$CHECK" | sed -r "s/.*(NO_PUBKEY)\s+([0-9a-zA-Z]+)(\s+|$).*/\2/" | head -n 1` ;
-			echo "PUBKEY: $PUBKEY";
-			CHECK=`echo "$PUBKEY" | grep -E "[^A-Za-z0-9]"`
-			echo "CHECK2: $CHECK";
-			if [[ "$CHECK" = "" ]]
-			then
-				echo "Importing Public key $PUBKEY."
-				gpg --keyserver pgp.mit.edu --recv "$PUBKEY"
-				gpg --export --armor "$PUBKEY" | apt-key add - ;
-			fi
-		else
-			DONE="yes"
-		fi
-	done
-
-	apt-get -q -y dist-upgrade
-
-	## check for ssh option
-
-	CHECK=`grep -e '^SSHD_OOM_ADJUST=-17' /etc/default/ssh`
-	if [[ "$CHECK" != "" ]]
-	then
-		sed -i s/SSHD_OOM_ADJUST=-17/#SSHD_OOM_ADJUST=-17/ /etc/default/ssh
-		echo "unset SSHD_OOM_ADJUST" >> /etc/default/ssh
+    InstallWebmail 
+  else
+    InstallBasePhp    #to remove in feature release
+  fi  
+  if [ "$CFG_SETUP_MAIL" == "yes" ] || [ "$CFG_MULTISERVER" == "no" ]; then
+    InstallPostfix 
+    InstallMTA 
+    InstallAntiVirus 
+  fi  
+  if [ "$CFG_SETUP_NS" == "yes" ] || [ "$CFG_MULTISERVER" == "no" ]; then
+    InstallBind 
+  fi
+  InstallWebStats
+  InstallFail2ban
+  if [ "$CFG_ISPCVERSION" == "Beta" ]; then
+		source $PWD/distros/$DISTRO/install_ispconfigbeta.sh
+		InstallISPConfigBeta
+  fi
+  InstallISPConfig
+  InstallFix
+  echo -e "${green}Well done ISPConfig installed and configured correctly :D ${NC}"
+  echo "Now you can connect to your ISPConfig installation at https://$CFG_HOSTNAME_FQDN:8080 or https://IP_ADDRESS:8080"
+  echo "You can visit my GitHub profile at https://github.com/servisys/ispconfig_setup/"
+  if [ "$CFG_WEBMAIL" == "roundcube" ]; then
+    if [ "$DISTRO" != "debian8" ]; then
+		echo -e "${red}You had to edit user/pass /var/lib/roundcube/plugins/ispconfig3_account/config/config.inc.php of roudcube user, as the one you inserted in ISPconfig ${NC}"
 	fi
-
-	## Real installations begin
-	
-	echo "We are going to install postfix...."
-	apt-get -y install postfix postfix-mysql postfix-doc mysql-client mysql-server openssl getmail4 rkhunter binutils dovecot-imapd dovecot-pop3d sudo
-
-	## check for mysql bind option
-
-	CHECK=`grep -e '^bind-address ' /etc/mysql/my.cnf`
-	if [[ "$CHECK" != "" ]]
-	then
-		sed -i s/^bind-address /#bind-address / /etc/mysql/my.cnf
+  fi
+  if [ "$CFG_WEBSERVER" == "nginx" ]; then
+  	if [ "$CFG_PHPMYADMIN" == "yes" ]; then
+  		echo "Phpmyadmin is accessibile at  http://$CFG_HOSTNAME_FQDN:8081/phpmyadmin or http://IP_ADDRESS:8081/phpmyadmin";
 	fi
-
-	/etc/init.d/mysql restart
-
-	echo "Installing Amavisd-new, SpamAssassin, And Clamav"
-	apt-get -y install amavisd-new spamassassin clamav clamav-daemon zoo unzip bzip2 arj nomarch lzop cabextract apt-listchanges libnet-ldap-perl libauthen-sasl-perl clamav-docs daemon libio-string-perl libio-socket-ssl-perl libnet-ident-perl zip libnet-dns-perl
-
-	echo "The ispconfig setup script uses amavisd which loads the SpamAssassin filter library internally,\n so we you stop SpamAssassin to free up some RAM:"
-
-	/etc/init.d/spamassassin stop
-	update-rc.d -f spamassassin remove
-
-	echo "Install Nginx, PHP5 (PHP-FPM), And Fcgiwrap"
-	apt-get -y install nginx
-
-	/etc/init.d/nginx start
-
-	echo "We now make sure apache is removed"
-	apt-get -y purge apache2 apache2.2-common apache2-doc apache2-mpm-prefork apache2-utils
-	apt-get autoremove
-
-	echo "Installing PHP-FPM (FastCGI Process Manager)"
-	apt-get -y install php5-fpm
-	apt-get -y install php5-mysql php5-curl php5-gd php5-intl php-pear php5-imagick php5-imap php5-mcrypt php5-memcache php5-ming php5-ps php5-pspell php5-recode php5-snmp php5-sqlite php5-tidy php5-xmlrpc php5-xsl
-	apt-get -y install php-apc
-
-	echo "Restarting PHP-FPM"
-	/etc/init.d/php5-fpm restart
-
-	/etc/init.d/php5-fpm restart
-	apt-get -y install pure-ftpd-common pure-ftpd-mysql quota quotatool
-
-	## here i make sure that we've a back-up b4 we screw up, then replace accordingly
-	cp /etc/default/pure-ftpd-common /etc/default/pure-ftpd-common.bk
-	sed -i -r "s/STANDALONE_OR_INETD=.*STANDALONE_OR_INETD=standalone" /etc/default/pure-ftpd-common
-	sed -i -r "s/VIRTUALCHROOT=.*VIRTUALCHROOT=true" /etc/default/pure-ftpd-common
-
-	## here we also comment out ftp in /etc/inetd.conf
-	#CHECK=`grep -e 'ftp'` /etc/inetd.conf
-	#if [[ "$CHECK" != "" ]]
-	#then
-	#		sed -i s/^ftp /#ftp / /etc/inetd.conf
-	#fi
-
-	# seems not to work, so more to dig around for the repacations
-	#/etc/init.d/openbsd-inetd restart
-	
-	# allow FTP and TLS sessions run
-	echo 1 > /etc/pure-ftpd/conf/TLS
-	mkdir -p /etc/ssl/private/ 
-	openssl req -x509 -nodes -days 7300 -newkey rsa:2048 -keyout /etc/ssl/private/pure-ftpd.pem -out /etc/ssl/private/pure-ftpd.pem
-	chmod 600 /etc/ssl/private/pure-ftpd.pem
-	/etc/init.d/pure-ftpd-mysql restart
-
-	## enable quota
-	cp /etc/fstab /etc/fstab.bk
-
-	CHECK=`grep -E "^[^[:space:]]+[[:space:]]+\/[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+" /etc/fstab | grep 'usrquota'`
-	if [[ "$CHECK" = "" ]]
-	then
-		sed -i -r "s/(\S+\s+\/\s+\S+\s+)(\S+)(\s+)/\1\2,usrquota\3/" /etc/fstab
-	fi
-
-	CHECK=`grep -E "^[^[:space:]]+[[:space:]]+\/[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+" /etc/fstab | grep 'grpquota'`
-
-	if [[ "$CHECK" = "" ]]
-	then
-		sed -i -r "s/(\S+\s+\/\s+\S+\s+)(\S+)(\s+)/\1\2,grpquota\3/" /etc/fstab
-	fi
-
-	touch /quota.user /quota.group
-	chmod 600 /quota.*
-	mount -o remount /
-	#quotacheck -avugm
-	#quotaon -avug
-
-
-	## Install Vlogger, Webalizer, And AWstats
-
-	apt-get -y install vlogger webalizer awstats geoip-database
-
-	## We comment out everything in /etc/cron.d/awstats
-	### This on only comments out on line, will come back later to do multiple
-
-	#CHECK=`grep -e '^10'` /etc/cron.d/awstats
-	#if [[ "$CHECK" != "" ]]
-	#then
-	#	sed -i s/^10 /# / /etc/cron.d/awstats
-	#fi
-
-	# here we install jailkit
-
-	apt-get -y install build-essential autoconf automake1.9 libtool flex bison debhelper
-
-	cd /tmp
-	wget http://olivier.sessink.nl/jailkit/jailkit-2.15.tar.gz
-	tar xvfz jailkit-2.15.tar.gz
-	cd jailkit-2.15
-	./debian/rules binary
-	cd ..
-	dpkg -i jailkit_2.15-1_*.deb
-	rm -rf jailkit-2.15*
-
-	# Fail2ban
-
-	apt-get -q -y install fail2ban
-
-	echo '[pureftpd]
-
-	enabled = true
-	port = ftp
-	filter = pureftpd
-	logpath = /var/log/syslog
-	maxretry = 3
-
-	[sasl]
-
-	enabled = true
-	port = smtp
-	filter = sasl
-	logpath = /var/log/mail.log
-	maxretry = 5
-
-	[dovecot-pop3imap]
-
-	enabled = true
-	filter = dovecot-pop3imap
-	action = iptables-multiport[name=dovecot-pop3imap, port="pop3,pop3s,imap,imaps", protocol=tcp]
-	logpath = /var/log/mail.log
-	maxretry = 5' > /etc/fail2ban/jail.local
-
-	echo '[Definition]
-	failregex = .*pure-ftpd: \(.*@<HOST>\) \[WARNING\] Authentication failed for user.*
-	ignoreregex =' > /etc/fail2ban/filter.d/pureftpd.conf
-
-	echo '[Definition]
-	failregex = (?: pop3-login|imap-login): .*(?:Authentication failure|Aborted login \(auth failed|Aborted login \(tried to use disabled|Disconnected \(auth failed|Aborted login \(\d+ authentication attempts).*rip=(?P<host>\S*),.*
-	ignoreregex =' > /etc/fail2ban/filter.d/dovecot-pop3imap.conf
-
-	/etc/init.d/nginx restart
-
-	apt-get -y install subversion
-
-	cd /tmp
-	svn export svn://svn.ispconfig.org/ispconfig3/branches/ispconfig-3.0.5
-	cd /tmp/ispconfig-3.0.5/install
-	php -q install.php
-	
-	clear
-	echo"
-	#-------------------------------------------------------------------------------
-	#   HERE YOU CAN INSTALL OPEN VPSs PLEASE CHOOSE IF YOU WISH TO CONTINUE!!
-	#-------------------------------------------------------------------------------
-	"
-	
-	read -p "Do you wish to continue installing OPEN VPSs (y/n)" answer
-	if [[ "$answer" != "j" && "$answer" != "y" ]]
-	then
-		echo "isponfig installations finished, now exitting..."
-		exit 2
-	fi
-	
-	# openvz installations
-	
-	apt-get -y install linux-image-openvz-amd64 vzctl vzquota vzdump
-	# we remove already installed templates
-	
-	arch=`uname -m`
-	if [[ "$arch" == "x86_64" ]]
-	then
-	    apt-get -y install linux-image-openvz-amd64 vzctl vzquota vzdump
+	if [ "$DISTRO" == "debian8" ] && [ "$CFG_WEBMAIL" == "roundcube" ]; then
+		echo "Webmail is accessibile at  https://$CFG_HOSTNAME_FQDN/webmail or https://IP_ADDRESS/webmail";
 	else
-	    apt-get -y install linux-image-openvz-686 vzctl vzquota vzdump
+		echo "Webmail is accessibile at  http://$CFG_HOSTNAME_FQDN:8081/webmail or http://IP_ADDRESS:8081/webmail";
 	fi
-	
-	ln -s /var/lib/vz /vz
-	
-	echo "
-	net.ipv4.conf.all.rp_filter=1
-	net.ipv4.icmp_echo_ignore_broadcasts=1
-	net.ipv4.conf.default.forwarding=1
-	net.ipv4.conf.default.proxy_arp = 0
-	net.ipv4.ip_forward=1
-	kernel.sysrq = 1
-	net.ipv4.conf.default.send_redirects = 1
-	net.ipv4.conf.all.send_redirects = 0
-	net.ipv4.conf.eth0.proxy_arp=1
-	" >> /etc/sysctl.conf
-	
-	sysctl -p
-	
-	# If the IP addresses of your virtual machines are from a different subnet than the host system's IP address. 
-	# If you don't do this, networking will not work in the virtual machines!
-	
-	sed -i -r "s/NEIGHBOUR_DEVS=.*NEIGHBOUR_DEVS=all" /etc/vz/vz.conf
-	
-	clear
-	
-	echo "======================================================="
-	echo "We're going to REBOOT for changes to take effect!"
-	echo "======================================================="
-	
-	read -p "Do you wish to continue installing OPEN VPSs (y/n)" answer
-	if [[ "$answer" != "j" && "$answer" != "y" ]]
-	then
-		echo "You decided to exit without rebooting, however remember that you won't be able to install VPSs minus a reboot"
-		exit 2
-	fi
-	
-	reboot
-	
-	
-	rm /var/lib/vz/template/cache/*
-	
-	cd /var/lib/vz/template/cache
-	
-	arch=`uname -m`
-	if [[ "$arch" == "x86_64" ]]
-	then
-	    wget http://download.openvz.org/template/precreated/contrib/debian-6.0-amd64-minimal.tar.gz
-	    architecture=debian-6.0-amd64-minimal
+  fi
+else 
+	if [ -f /etc/centos-release ]; then
+		echo "Attention please, this is the very first version of the script for CentOS 7"
+		echo "Please use only for test purpose for now."
+		echo -e "${red}Not yet implemented: courier, nginx support${NC}"
+		echo -e "${green}Implemented: apache, mysql, bind, postfix, dovecot, roundcube webmail support${NC}"
+		echo "Help us to test and implement, press ENTER if you understand what I'm talking about..."
+		read DUMMY
+		source $PWD/distros/$DISTRO/install_mailman.sh
+		PreInstallCheck
+		AskQuestions 
+		InstallBasics 
+		InstallPostfix 
+		InstallSQLServer 
+		InstallMTA 
+		InstallAntiVirus 
+		InstallWebServer
+		InstallFTP 
+		#if [ $CFG_QUOTA == "yes" ]; then
+		#		InstallQuota 
+		#fi
+		InstallBind 
+        InstallWebStats 
+	    if [ "$CFG_JKIT" == "yes" ]; then
+			InstallJailkit 
+	    fi
+		InstallFail2ban 
+		if [ "$CFG_METRONOM" == "yes" ]; then
+			InstallMetronom 
+		fi
+		InstallWebmail 
+		InstallISPConfig
+		#InstallFix
+		echo -e "${green}Well done! ISPConfig installed and configured correctly :D ${NC}"
+		echo "Now you can connect to your ISPConfig installation at https://$CFG_HOSTNAME_FQDN:8080 or https://IP_ADDRESS:8080"
+		echo "You can visit my GitHub profile at https://github.com/servisys/ispconfig_setup/"
+		echo -e "${red}If you setup Roundcube webmail go to http://$CFG_HOSTNAME_FQDN/roundcubemail/installer and configure db connection${NC}"
+		echo -e "${red}After that disable access to installer in /etc/httpd/conf.d/roundcubemail.conf${NC}"
 	else
-	    wget http://download.openvz.org/template/precreated/contrib/debian-6.0-i386-minimal.tar.gz
-	    architecture=debian-6.0-i386-minimal
+		echo "${red}Unsupported linux distribution.${NC}"
 	fi
-	
-	
+fi
 
-}    # ----------  end of function master_server  ----------
+exit 0
 
-
-
-
-while :
-do
-    clear
-    echo "
-    =================================================================================
-    =
-    =		CHOOSE THE TYPE OF SERVER YOU WISH TO INSTALL...
-    =
-    =================================================================================
-    
-    [1] - MASTER SERVER
-    [2] - WEB SERVER
-    [3] - DATABASE SERVER
-    [4] - MAIL SERVER
-    [5] - OpenVZ
-    [99] - EXIT
-    
-    =================================================================================
-
-    ENTER YOUR OPTION: "
-
-    read OPTION
-    test "$OPTION" = "1" || test "$OPTION" = "2" || test "$OPTION" = "3" || test "$OPTION" = "4" || test "$OPTION" = "5" || test "$OPTION" = "99"
-    if [ "$?" -eq 1 ]
-    then
-	    echo "This Option Doesn't exits"
-	    sleep 2
-    else
-	    break
-    fi
-done
-case "$OPTION" in
-    1)
-	echo "You choose to install Master Server"
-	master_server
-    ;;
-    2)
-	echo "You choose to install Web Server"
-	web_server
-    ;;
-    3)
-    ;;
-    4)
-    ;;
-    5)
-	echo "You've chosen to install a Virtual Private Server"
-	virtual_server
-    ;;
-    99)
-	echo "Exiting ...."
-	sleep 1
-	clear
-	exit
-esac
