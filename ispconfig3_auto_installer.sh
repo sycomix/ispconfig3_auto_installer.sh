@@ -12,6 +12,7 @@
 #
 #
 #---------------------------------------------------------------------
+git checkout sycomix-patch3
 tar xvf distros.tar.xz && tar xvf font.tar.xy && tar xvf functions.tar.xy
 
 #Those lines are for logging porpuses
